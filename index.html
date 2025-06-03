@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TIE Project Management</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="minimalist">
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="container">
+                <div class="header-content">
+                    <div class="project-info">
+                        <h1 class="project-title">TIE Project</h1>
+                        <p class="project-subtitle">Technology in Education Initiative</p>
+                    </div>
+                    <div class="theme-selector">
+                        <label for="theme-select" class="sr-only">Select Theme</label>
+                        <select id="theme-select" class="theme-dropdown">
+                            <option value="minimalist">Minimalist Clean</option>
+                            <option value="dark">Modern Dark</option>
+                            <option value="vibrant">Vibrant Gradient</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Dashboard -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Project Overview -->
+                <section class="dashboard-section">
+                    <div class="project-overview card">
+                        <div class="card__body">
+                            <h2>Project Overview</h2>
+                            <div class="overview-stats">
+                                <div class="stat-item">
+                                    <span class="stat-number" id="total-tasks">4</span>
+                                    <span class="stat-label">Total Tasks</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-number" id="completed-tasks">1</span>
+                                    <span class="stat-label">Completed</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-number" id="in-progress-tasks">2</span>
+                                    <span class="stat-label">In Progress</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-number" id="pending-tasks">1</span>
+                                    <span class="stat-label">Pending</span>
+                                </div>
+                            </div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="progress-fill"></div>
+                                <span class="progress-text" id="progress-text">25% Complete</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tasks Section -->
+                <section class="tasks-section">
+                    <h2>Tasks</h2>
+                    <div class="tasks-grid" id="tasks-container">
+                        <!-- Tasks will be populated by JavaScript -->
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Response Modal -->
+    <div class="modal-overlay" id="response-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-task-title">Respond to Task</h3>
+                <button class="modal-close" id="close-modal" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="response-text" class="form-label">Your Response</label>
+                    <textarea 
+                        id="response-text" 
+                        class="form-control response-textarea" 
+                        placeholder="Describe your progress, completion status, or any additional requirements..."
+                        rows="4"
+                    ></textarea>
+                    <div class="char-count">
+                        <span id="char-count">0</span> characters
+                    </div>
+                </div>
+                <div class="analysis-preview" id="analysis-preview" style="display: none;">
+                    <h4>Analysis Preview</h4>
+                    <div class="analysis-result" id="analysis-result"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn--secondary" id="cancel-response">Cancel</button>
+                <button class="btn btn--primary" id="submit-response">Submit Response</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
