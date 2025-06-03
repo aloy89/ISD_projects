@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibrant Project Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="container flex justify-between items-center">
+            <h1 class="app-title">Vibrant Project Manager</h1>
+            <div class="header-actions flex gap-8">
+                <button id="export-btn" class="btn btn--primary">Export Data</button>
+                <button id="import-btn" class="btn btn--primary">Import Data</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="dashboard">
+            <div class="dashboard-header flex justify-between items-center">
+                <h2>Projects Dashboard</h2>
+                <button id="new-project-btn" class="btn btn--primary">Create Project</button>
+            </div>
+            
+            <div id="projects-container" class="projects-grid">
+                <!-- Projects will be inserted here by JavaScript -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Project Creation/Edit Modal -->
+    <div id="project-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="project-modal-title">Create New Project</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="project-form">
+                    <div class="form-group">
+                        <label for="project-name" class="form-label">Project Name</label>
+                        <input type="text" id="project-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-description" class="form-label">Description</label>
+                        <textarea id="project-description" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="form-row flex gap-16">
+                        <div class="form-group">
+                            <label for="project-start-date" class="form-label">Start Date</label>
+                            <input type="date" id="project-start-date" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="project-end-date" class="form-label">End Date</label>
+                            <input type="date" id="project-end-date" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-status" class="form-label">Status</label>
+                        <select id="project-status" class="form-control" required>
+                            <option value="Active">Active</option>
+                            <option value="On Hold">On Hold</option>
+                            <option value="Completed">Completed</option>
+                            <option value="Cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-progress" class="form-label">Progress (%)</label>
+                        <input type="range" id="project-progress" class="form-control" min="0" max="100" value="0">
+                        <output for="project-progress" id="progress-value">0%</output>
+                    </div>
+                    <div class="form-actions flex justify-between">
+                        <button type="button" class="btn btn--secondary modal-cancel">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Save Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Creation/Edit Modal -->
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="task-modal-title">Create New Task</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="task-form">
+                    <input type="hidden" id="task-project-id">
+                    <div class="form-group">
+                        <label for="task-name" class="form-label">Task Name</label>
+                        <input type="text" id="task-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-description" class="form-label">Description</label>
+                        <textarea id="task-description" class="form-control" rows="3" required></textarea>
+                    </div>
+                    <div class="form-row flex gap-16">
+                        <div class="form-group">
+                            <label for="task-status" class="form-label">Status</label>
+                            <select id="task-status" class="form-control" required>
+                                <option value="Pending">Pending</option>
+                                <option value="In Progress">In Progress</option>
+                                <option value="Completed">Completed</option>
+                                <option value="Blocked">Blocked</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-priority" class="form-label">Priority</label>
+                            <select id="task-priority" class="form-control" required>
+                                <option value="High">High</option>
+                                <option value="Medium">Medium</option>
+                                <option value="Low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row flex gap-16">
+                        <div class="form-group">
+                            <label for="task-due-date" class="form-label">Due Date</label>
+                            <input type="date" id="task-due-date" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-assigned" class="form-label">Assigned To</label>
+                            <input type="text" id="task-assigned" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="form-actions flex justify-between">
+                        <button type="button" class="btn btn--secondary modal-cancel">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task View Modal -->
+    <div id="task-view-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="view-task-name">Task Details</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="task-details">
+                    <div class="detail-group">
+                        <h4>Description</h4>
+                        <p id="view-task-description"></p>
+                    </div>
+                    <div class="detail-row flex gap-16">
+                        <div class="detail-group">
+                            <h4>Status</h4>
+                            <div id="view-task-status" class="status"></div>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Priority</h4>
+                            <div id="view-task-priority" class="priority-badge"></div>
+                        </div>
+                    </div>
+                    <div class="detail-row flex gap-16">
+                        <div class="detail-group">
+                            <h4>Due Date</h4>
+                            <p id="view-task-due-date"></p>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Assigned To</h4>
+                            <p id="view-task-assigned"></p>
+                        </div>
+                    </div>
+                    <div class="detail-group">
+                        <h4>Notes</h4>
+                        <div id="view-task-notes" class="notes-container">
+                            <!-- Notes will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Response Modal -->
+    <div id="task-response-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="response-task-name">Respond to Task</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="response-form">
+                    <div class="form-group">
+                        <label for="task-response" class="form-label">Your Response</label>
+                        <textarea id="task-response" class="form-control" rows="4" placeholder="Type your update here..."></textarea>
+                    </div>
+                    <div class="analysis-result hidden" id="analysis-result">
+                        <h4>Analysis</h4>
+                        <p id="analysis-text"></p>
+                    </div>
+                    <div class="form-actions flex justify-between">
+                        <button type="button" class="btn btn--secondary modal-cancel">Cancel</button>
+                        <button type="button" id="submit-response" class="btn btn--primary">Submit Response</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="import-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Import Data</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="import-data" class="form-label">Paste JSON Data</label>
+                    <textarea id="import-data" class="form-control" rows="10" placeholder="Paste exported JSON data here..."></textarea>
+                </div>
+                <div class="form-actions flex justify-between">
+                    <button type="button" class="btn btn--secondary modal-cancel">Cancel</button>
+                    <button type="button" id="confirm-import" class="btn btn--primary">Import Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Overlay for modals -->
+    <div id="modal-overlay" class="modal-overlay"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
