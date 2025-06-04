@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibrant Project Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="container">
+            <h1 class="app-title">Vibrant Project Manager</h1>
+            <p class="app-subtitle">Manage your projects with style</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="dashboard">
+            <div class="dashboard-header">
+                <h2>Projects Dashboard</h2>
+            </div>
+            
+            <div id="projects-container" class="projects-container">
+                <!-- Projects will be inserted here by JavaScript -->
+            </div>
+        </section>
+    </main>
+
+    <!-- Task View Modal -->
+    <div id="task-view-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="view-task-name">Task Details</h3>
+                <button class="modal-close" id="close-view-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="task-details">
+                    <div class="detail-group">
+                        <h4>Description</h4>
+                        <p id="view-task-description"></p>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-group">
+                            <h4>Status</h4>
+                            <span id="view-task-status" class="status-badge"></span>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Due Date</h4>
+                            <p id="view-task-due-date"></p>
+                        </div>
+                    </div>
+                    <div class="detail-group">
+                        <h4>Assigned To</h4>
+                        <p id="view-task-assigned"></p>
+                    </div>
+                    <div class="detail-group">
+                        <h4>Notes & Updates</h4>
+                        <div id="view-task-notes" class="notes-container">
+                            <!-- Notes will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Response Modal -->
+    <div id="task-response-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="response-task-name">Respond to Task</h3>
+                <button class="modal-close" id="close-response-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="task-response" class="form-label">Your Response</label>
+                    <textarea id="task-response" class="form-control" rows="4" placeholder="Type your update here..."></textarea>
+                </div>
+                <div class="analysis-result hidden" id="analysis-result">
+                    <h4>🤖 AI Analysis</h4>
+                    <p id="analysis-text"></p>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn--secondary" id="cancel-response">Cancel</button>
+                    <button type="button" id="submit-response" class="btn btn--primary">Submit Response</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
