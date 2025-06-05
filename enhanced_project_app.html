@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Project Management System</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
+</head>
+<body>
+    <!-- Authentication Pages -->
+    <div id="auth-section" class="auth-section">
+        <!-- Login Page -->
+        <div id="login-page" class="auth-container">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <h1>Project Management</h1>
+                    <p>Sign in to your account</p>
+                </div>
+                <form id="login-form" class="auth-form">
+                    <div class="form-group">
+                        <label class="form-label" for="login-email">Email</label>
+                        <input type="email" id="login-email" class="form-control" placeholder="admin@example.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="login-password">Password</label>
+                        <input type="password" id="login-password" class="form-control" placeholder="admin123" required>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Sign In</button>
+                    <div class="auth-footer">
+                        <p>Don't have an account? <a href="#" id="show-register">Sign up</a></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Registration Page -->
+        <div id="register-page" class="auth-container hidden">
+            <div class="auth-card">
+                <div class="auth-header">
+                    <h1>Create Account</h1>
+                    <p>Join our project management platform</p>
+                </div>
+                <form id="register-form" class="auth-form">
+                    <div class="form-group">
+                        <label class="form-label" for="register-username">Username</label>
+                        <input type="text" id="register-username" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="register-email">Email</label>
+                        <input type="email" id="register-email" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="register-password">Password</label>
+                        <input type="password" id="register-password" class="form-control" required>
+                    </div>
+                    <div class="password-strength">
+                        <div class="strength-meter">
+                            <div id="strength-bar" class="strength-bar"></div>
+                        </div>
+                        <div id="strength-text" class="strength-text"></div>
+                    </div>
+                    <button type="submit" class="btn btn--primary btn--full-width">Create Account</button>
+                    <div class="auth-footer">
+                        <p>Already have an account? <a href="#" id="show-login">Sign in</a></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="main-app" class="main-app hidden">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="container">
+                <div class="header-content">
+                    <div class="header-left">
+                        <h1 class="app-title">Project Management</h1>
+                        <p class="app-subtitle">Entrepreneurship Education Projects</p>
+                    </div>
+                    <div class="header-right">
+                        <div class="user-menu">
+                            <div class="user-avatar" id="user-avatar">
+                                <span id="user-initials">A</span>
+                            </div>
+                            <div class="user-dropdown hidden" id="user-dropdown">
+                                <div class="user-info">
+                                    <div class="user-name" id="user-name">Admin</div>
+                                    <div class="user-role" id="user-role">Administrator</div>
+                                </div>
+                                <div class="dropdown-divider"></div>
+                                <a href="#" class="dropdown-item" id="view-profile">
+                                    <span>👤</span> Profile
+                                </a>
+                                <a href="#" class="dropdown-item admin-only" id="admin-panel">
+                                    <span>⚙️</span> Admin Panel
+                                </a>
+                                <div class="dropdown-divider"></div>
+                                <a href="#" class="dropdown-item" id="logout-btn">
+                                    <span>🚪</span> Logout
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="container">
+            <!-- Dashboard Controls -->
+            <section class="dashboard-controls">
+                <div class="controls-left">
+                    <h2>Projects Dashboard</h2>
+                    <div class="filter-controls">
+                        <select id="project-filter" class="form-control">
+                            <option value="all">All Projects</option>
+                            <option value="my">My Projects</option>
+                            <option value="active">Active</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="controls-right">
+                    <button class="btn btn--secondary" id="create-task-btn">
+                        <span>+</span> New Task
+                    </button>
+                    <button class="btn btn--primary admin-only" id="create-project-btn">
+                        <span>+</span> New Project
+                    </button>
+                </div>
+            </section>
+
+            <!-- Projects Grid -->
+            <section class="dashboard">
+                <div id="projects-container" class="projects-container">
+                    <!-- Projects will be rendered here -->
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Task View Modal -->
+    <div id="task-view-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="view-task-name">Task Details</h3>
+                <button class="modal-close" id="close-view-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="task-details">
+                    <div class="detail-group">
+                        <h4>Description</h4>
+                        <p id="view-task-description"></p>
+                    </div>
+                    <div class="detail-row">
+                        <div class="detail-group">
+                            <h4>Status</h4>
+                            <span id="view-task-status" class="status-badge"></span>
+                        </div>
+                        <div class="detail-group">
+                            <h4>Due Date</h4>
+                            <p id="view-task-due-date"></p>
+                        </div>
+                    </div>
+                    <div class="detail-group">
+                        <h4>Assigned To</h4>
+                        <p id="view-task-assigned"></p>
+                    </div>
+                    <div class="detail-group">
+                        <h4>Notes & Updates</h4>
+                        <div id="view-task-notes" class="notes-container">
+                            <!-- Notes will be added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Task Response Modal -->
+    <div id="task-response-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="response-task-name">Respond to Task</h3>
+                <button class="modal-close" id="close-response-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="task-response" class="form-label">Your Response</label>
+                    <textarea id="task-response" class="form-control" rows="4" placeholder="Type your update here..."></textarea>
+                </div>
+                <div class="analysis-result hidden" id="analysis-result">
+                    <h4>🤖 AI Analysis</h4>
+                    <p id="analysis-text"></p>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn--secondary" id="cancel-response">Cancel</button>
+                    <button type="button" id="submit-response" class="btn btn--primary">Submit Response</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Project Modal -->
+    <div id="project-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="project-modal-title">Create New Project</h3>
+                <button class="modal-close" id="close-project-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="project-form">
+                    <div class="form-group">
+                        <label for="project-name" class="form-label">Project Name</label>
+                        <input type="text" id="project-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-description" class="form-label">Description</label>
+                        <textarea id="project-description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="project-users" class="form-label">Assign Users</label>
+                        <div id="project-users" class="user-checkboxes">
+                            <!-- User checkboxes will be populated here -->
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn--secondary" id="cancel-project">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Save Project</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create/Edit Task Modal -->
+    <div id="task-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="task-modal-title">Create New Task</h3>
+                <button class="modal-close" id="close-task-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="task-form">
+                    <div class="form-group">
+                        <label for="task-name" class="form-label">Task Name</label>
+                        <input type="text" id="task-name" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="task-description" class="form-label">Description</label>
+                        <textarea id="task-description" class="form-control" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task-project" class="form-label">Project</label>
+                            <select id="task-project" class="form-control" required>
+                                <!-- Projects will be populated here -->
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-assignee" class="form-label">Assign To</label>
+                            <select id="task-assignee" class="form-control" required>
+                                <!-- Users will be populated here -->
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="task-due-date" class="form-label">Due Date</label>
+                            <input type="date" id="task-due-date" class="form-control" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="task-priority" class="form-label">Priority</label>
+                            <select id="task-priority" class="form-control" required>
+                                <option value="Low">Low</option>
+                                <option value="Medium" selected>Medium</option>
+                                <option value="High">High</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn--secondary" id="cancel-task">Cancel</button>
+                        <button type="submit" class="btn btn--primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-modal" class="modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h3>Admin Panel</h3>
+                <button class="modal-close" id="close-admin-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-tabs">
+                    <button class="tab-btn active" data-tab="users">Users</button>
+                    <button class="tab-btn" data-tab="projects">Projects</button>
+                    <button class="tab-btn" data-tab="analytics">Analytics</button>
+                </div>
+
+                <div id="users-tab" class="tab-content active">
+                    <div class="users-list">
+                        <!-- Users will be populated here -->
+                    </div>
+                </div>
+
+                <div id="projects-tab" class="tab-content">
+                    <div class="projects-list">
+                        <!-- All projects will be listed here -->
+                    </div>
+                </div>
+
+                <div id="analytics-tab" class="tab-content">
+                    <div class="analytics-dashboard">
+                        <!-- Analytics will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

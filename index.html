@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Management System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Login Page -->
+    <div id="login-page" class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>Project Management</h1>
+                <p>Sign in to your account</p>
+            </div>
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label class="form-label" for="login-email">Email</label>
+                    <input type="email" id="login-email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="login-password">Password</label>
+                    <input type="password" id="login-password" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn--primary btn--full-width">Sign In</button>
+                <div class="auth-footer">
+                    <p>Don't have an account? <a href="#" id="show-register">Sign up</a></p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Registration Page -->
+    <div id="register-page" class="auth-container hidden">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>Create Account</h1>
+                <p>Join our project management platform</p>
+            </div>
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label class="form-label" for="register-username">Username</label>
+                    <input type="text" id="register-username" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="register-email">Email</label>
+                    <input type="email" id="register-email" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="register-password">Password</label>
+                    <input type="password" id="register-password" class="form-control" required>
+                    <div id="password-strength" class="password-strength"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="register-confirm">Confirm Password</label>
+                    <input type="password" id="register-confirm" class="form-control" required>
+                </div>
+                <button type="submit" class="btn btn--primary btn--full-width">Create Account</button>
+                <div class="auth-footer">
+                    <p>Already have an account? <a href="#" id="show-login">Sign in</a></p>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="main-app" class="hidden">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="header-left">
+                    <h1 class="app-title">Project Management</h1>
+                </div>
+                <div class="header-right">
+                    <div class="user-dropdown">
+                        <button class="user-dropdown-toggle">
+                            <span id="current-user-name">User</span>
+                            <span class="dropdown-arrow">▼</span>
+                        </button>
+                        <div class="user-dropdown-menu">
+                            <div class="dropdown-item" id="view-profile">Profile</div>
+                            <div class="dropdown-item admin-only" id="admin-panel">Admin Panel</div>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-item" id="logout">Logout</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="container">
+                <!-- Dashboard Controls -->
+                <div class="dashboard-header">
+                    <div class="dashboard-title">
+                        <h2>Dashboard</h2>
+                        <p>Manage your projects and tasks</p>
+                    </div>
+                    <div class="dashboard-actions">
+                        <button class="btn btn--outline" id="filter-projects">Filter</button>
+                        <button class="btn btn--secondary" id="create-task-btn">+ New Task</button>
+                        <button class="btn btn--primary admin-only" id="create-project-btn">+ New Project</button>
+                    </div>
+                </div>
+
+                <!-- Projects Grid -->
+                <div class="projects-grid" id="projects-grid">
+                    <!-- Projects will be dynamically inserted here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Project Modal -->
+    <div id="project-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="project-modal-title">Create Project</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="project-form" class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="project-name">Project Name</label>
+                    <input type="text" id="project-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="project-description">Description</label>
+                    <textarea id="project-description" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="project-assignees">Assign Users</label>
+                    <select id="project-assignees" class="form-control" multiple>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn--outline modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Save Project</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Task Modal -->
+    <div id="task-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="task-modal-title">Create Task</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <form id="task-form" class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="task-name">Task Name</label>
+                    <input type="text" id="task-name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-description">Description</label>
+                    <textarea id="task-description" class="form-control" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-project">Project</label>
+                    <select id="task-project" class="form-control" required>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-assignee">Assignee</label>
+                    <select id="task-assignee" class="form-control">
+                        <option value="">Select assignee</option>
+                        <!-- Options will be populated dynamically -->
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-status">Status</label>
+                    <select id="task-status" class="form-control">
+                        <option value="Pending">Pending</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Completed">Completed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-priority">Priority</label>
+                    <select id="task-priority" class="form-control">
+                        <option value="Low">Low</option>
+                        <option value="Medium">Medium</option>
+                        <option value="High">High</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="task-due-date">Due Date</label>
+                    <input type="date" id="task-due-date" class="form-control">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn--outline modal-cancel">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Save Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Panel Modal -->
+    <div id="admin-modal" class="modal hidden">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3>Admin Panel</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="admin-tabs">
+                    <button class="tab-btn active" data-tab="users">Users</button>
+                    <button class="tab-btn" data-tab="projects">All Projects</button>
+                </div>
+                <div class="tab-content">
+                    <div id="users-tab" class="tab-pane active">
+                        <div class="users-list" id="users-list">
+                            <!-- Users will be populated here -->
+                        </div>
+                    </div>
+                    <div id="projects-tab" class="tab-pane">
+                        <div class="admin-projects-list" id="admin-projects-list">
+                            <!-- All projects will be listed here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
