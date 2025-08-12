@@ -1,15 +1,34 @@
-/* HKUST MPhil TIE Weekly Progress Tracker (Demo, SPA)
-   Tech: Vanilla JS + HTML + CSS, LocalStorage persistence
+/*
+HKUST MPhil TIE Weekly Progress Tracker (Demo, SPA)
+
+Backendless SPA using GitHub CSV persistence via GitHub Contents API.
+Configuration:
+- Provide GitHub repo info and a Personal Access Token (classic fine) at runtime.
+- You can set window.GITHUB_TOKEN and window.GITHUB_CONFIG = { owner, repo, branch }
+  before the app loads, or configure in Settings (stored only in memory).
+- Without a token, the app is read-only. It can load public CSVs but cannot write.
+
+CSV layout (split files):
+- data/students.csv
+- data/weekly_entries.csv
+- data/teams.csv
+- data/team_memberships.csv
+- data/team_weekly_entries.csv
+
+Schemas (blockers removed):
+- students: id, full_name, email, cohort, start_date, status, notes, research_area, supervisor, created_at, updated_at
+- weekly_entries: id, student_id, week_start_date, goals_set_json, per_goal_status_json, overall_status, progress_notes, next_week_goals_json, created_by, created_at, updated_at
+- teams: id, team_name, description, created_at, updated_at
+- team_memberships: id, team_id, student_id, role_in_team, created_at
+- team_weekly_entries: id, team_id, week_start_date, team_goals_set_json, team_overall_status, team_progress_notes, next_week_team_goals_json, created_by, created_at, updated_at
 */
 
 (() => {
-  const STORAGE_KEY = "progressTrackerData";
   const HK_TZ = "Asia/Hong_Kong";
 
   // -------------------- Utilities --------------------
   const uuid = () => {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    // Fallback
     const s4 = () => Math.floor((1 + Math.random()) * 0x10000).toString(16).substring(1);
     return `${s4()}${s4()}-${s4()}-${s4()}-${s4()}-${s4()}${s4()}${s4()}`;
   };
@@ -17,7 +36,6 @@
   const nowISO = () => new Date().toISOString();
 
   const toHKISODate = (date) => {
-    // Returns YYYY-MM-DD in HK timezone
     const parts = new Intl.DateTimeFormat('en-CA', {
       timeZone: HK_TZ,
       year: 'numeric', month: '2-digit', day: '2-digit'
@@ -29,16 +47,12 @@
   };
 
   const getDayOfWeekHK = (date) => {
-    // 0=Sun..6=Sat in HK timezone
     const dayStr = new Intl.DateTimeFormat('en-US', { timeZone: HK_TZ, weekday: 'short' }).format(date);
     const map = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
     return map[dayStr];
   };
 
-  const dateFromHKISO = (isoYMD) => {
-    // Create Date from YYYY-MM-DD at 00:00 HK time (+08:00)
-    return new Date(`${isoYMD}T00:00:00+08:00`);
-  };
+  const dateFromHKISO = (isoYMD) => new Date(`${isoYMD}T00:00:00+08:00`);
 
   const addDaysHK = (isoYMD, delta) => {
     const base = dateFromHKISO(isoYMD);
@@ -49,16 +63,13 @@
   const getCurrentMondayHKISO = () => {
     const todayHK = toHKISODate(new Date());
     const d = dateFromHKISO(todayHK);
-    const dow = getDayOfWeekHK(d); // 0=Sun..6=Sat
-    const delta = (dow + 6) % 7; // days since Monday
+    const dow = getDayOfWeekHK(d);
+    const delta = (dow + 6) % 7;
     const monday = new Date(d.getTime() - delta * 86400000);
     return toHKISODate(monday);
   };
 
-  const isMondayHK = (isoYMD) => {
-    const d = dateFromHKISO(isoYMD);
-    return getDayOfWeekHK(d) === 1;
-  };
+  const isMondayHK = (isoYMD) => getDayOfWeekHK(dateFromHKISO(isoYMD)) === 1;
 
   const formatISOForDisplay = (isoYMD) => {
     const d = dateFromHKISO(isoYMD);
@@ -75,8 +86,6 @@
     return 'partial';
   };
 
-  const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
-
   const showToast = (message, type = 'info', timeout = 3000) => {
     const container = document.getElementById('toastContainer');
     const div = document.createElement('div');
@@ -90,50 +99,195 @@
     }, timeout);
   };
 
-  const escapeCSV = (value) => {
+  // CSV helpers (parse/stringify)
+  const csvEscape = (value) => {
     if (value === null || value === undefined) return '';
     const str = String(value);
-    if (/[",\n]/.test(str)) {
-      return '"' + str.replace(/"/g, '""') + '"';
-    }
-    return str;
+    return /[",\n]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
   };
-
-  const toCSV = (rows, headerOrder) => {
-    if (!rows || rows.length === 0) return '';
-    const headers = headerOrder || Object.keys(rows[0]);
-    const lines = [];
-    lines.push(headers.map(h => escapeCSV(h)).join(','));
+  const csvStringify = (rows, headers) => {
+    if (!rows || rows.length === 0) return headers ? headers.join(',') + '\n' : '';
+    const cols = headers || Object.keys(rows[0]);
+    const lines = [cols.join(',')];
     for (const row of rows) {
-      const line = headers.map(h => escapeCSV(row[h] ?? '')).join(',');
-      lines.push(line);
+      lines.push(cols.map(h => csvEscape(row[h] ?? '')).join(','));
     }
-    return '\uFEFF' + lines.join('\n'); // UTF-8 with BOM
+    return lines.join('\n');
+  };
+  const csvParse = (str) => {
+    // Simple CSV parser supporting quotes and escaped quotes
+    const rows = [];
+    let i = 0, field = '', row = [], inQuotes = false;
+    const pushField = () => { row.push(field); field = ''; };
+    const pushRow = () => { rows.push(row); row = []; };
+    while (i < str.length) {
+      const c = str[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (str[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false; i++; continue;
+        } else { field += c; i++; continue; }
+      } else {
+        if (c === '"') { inQuotes = true; i++; continue; }
+        if (c === ',') { pushField(); i++; continue; }
+        if (c === '\n' || c === '\r') {
+          // handle CRLF or LF
+          pushField(); pushRow();
+          if (c === '\r' && str[i + 1] === '\n') i++;
+          i++; continue;
+        }
+        field += c; i++; continue;
+      }
+    }
+    pushField();
+    pushRow();
+    // Convert to array of objects using header row
+    if (rows.length === 0) return [];
+    const header = rows[0];
+    const out = [];
+    for (let r = 1; r < rows.length; r++) {
+      if (rows[r].length === 1 && rows[r][0] === '') continue; // skip trailing blank
+      const obj = {};
+      for (let cidx = 0; cidx < header.length; cidx++) obj[header[cidx]] = rows[r][cidx] ?? '';
+      out.push(obj);
+    }
+    return out;
   };
 
-  const downloadTextFile = (filename, content) => {
-    const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+  // base64 helpers for Unicode
+  const encodeBase64 = (s) => btoa(unescape(encodeURIComponent(s)));
+  const decodeBase64 = (b) => decodeURIComponent(escape(atob(b)));
+
+  // -------------------- GitHub API Backend --------------------
+  const githubPaths = {
+    students: 'data/students.csv',
+    weekly_entries: 'data/weekly_entries.csv',
+    teams: 'data/teams.csv',
+    team_memberships: 'data/team_memberships.csv',
+    team_weekly_entries: 'data/team_weekly_entries.csv'
   };
 
-  // -------------------- Data Layer --------------------
-  const loadData = () => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch { return null; }
+  const appState = {
+    data: null,
+    page: 'dashboard',
+    selectedStudentId: null,
+    filters: { search: '', status: 'all', team: 'all', hasEntryThisWeek: 'all' },
+    formEditingEntryId: null,
+    github: {
+      owner: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.owner) || '',
+      repo: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.repo) || '',
+      branch: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.branch) || 'main',
+      token: window.GITHUB_TOKEN || ''
+    },
+    shas: {} // path -> sha
   };
 
-  const saveData = (data) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  const writeEnabled = () => !!(appState.github.owner && appState.github.repo && appState.github.branch && appState.github.token);
+
+  const ghHeaders = () => {
+    const h = {
+      'Accept': 'application/vnd.github+json'
+    };
+    if (appState.github.token) h['Authorization'] = `Bearer ${appState.github.token}`;
+    return h;
   };
 
+  const getFileAndSha = async (path) => {
+    const { owner, repo, branch } = appState.github;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`;
+    const res = await fetch(url, { headers: ghHeaders() });
+    if (res.status === 404) return { exists: false };
+    if (!res.ok) throw new Error(`GitHub GET failed ${res.status}`);
+    const json = await res.json();
+    return { exists: true, sha: json.sha, content: decodeBase64(json.content) };
+  };
+
+  const putFileWithSha = async (path, content, sha, message) => {
+    const { owner, repo, branch } = appState.github;
+    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const body = {
+      message,
+      content: encodeBase64(content),
+      branch,
+      sha: sha || undefined
+    };
+    const res = await fetch(url, { method: 'PUT', headers: { ...ghHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) {
+      const t = await res.text();
+      const err = new Error(`GitHub PUT failed ${res.status}: ${t}`);
+      err.status = res.status;
+      throw err;
+    }
+    const json = await res.json();
+    return { sha: json.content && json.content.sha };
+  };
+
+  const loadAllDataFromGitHub = async () => {
+    const paths = Object.values(githubPaths);
+    const result = { students: [], weekly_entries: [], teams: [], team_memberships: [], team_weekly_entries: [] };
+    let missingAny = false;
+
+    for (const [key, path] of Object.entries(githubPaths)) {
+      try {
+        const { exists, content, sha } = await getFileAndSha(path);
+        if (!exists) { missingAny = true; continue; }
+        appState.shas[path] = sha;
+        const rows = csvParse(content);
+        result[key] = rows;
+      } catch (e) {
+        if (String(e.message || '').includes('404')) missingAny = true; else throw e;
+      }
+    }
+
+    if (missingAny) return { data: null, missing: true };
+
+    return { data: result, missing: false };
+  };
+
+  const csvHeaders = {
+    students: ["id","full_name","email","cohort","start_date","status","notes","research_area","supervisor","created_at","updated_at"],
+    weekly_entries: ["id","student_id","week_start_date","goals_set_json","per_goal_status_json","overall_status","progress_notes","next_week_goals_json","created_by","created_at","updated_at"],
+    teams: ["id","team_name","description","created_at","updated_at"],
+    team_memberships: ["id","team_id","student_id","role_in_team","created_at"],
+    team_weekly_entries: ["id","team_id","week_start_date","team_goals_set_json","team_overall_status","team_progress_notes","next_week_team_goals_json","created_by","created_at","updated_at"]
+  };
+
+  const saveAllDataToGitHub = async (data, message = 'chore(data): sync') => {
+    if (!writeEnabled()) throw new Error('Write not enabled. Provide token and repo config.');
+
+    const toTry = Object.entries(githubPaths);
+    for (const [key, path] of toTry) {
+      const rows = data[key];
+      const content = csvStringify(rows, csvHeaders[key]);
+      let sha = appState.shas[path] || null;
+      try {
+        const put = await putFileWithSha(path, content, sha, message);
+        if (put.sha) appState.shas[path] = put.sha;
+      } catch (err) {
+        // Basic conflict retry: refetch sha and merge once
+        if (err.status === 409 || err.status === 422) {
+          showToast('Conflict detected. Retrying…', 'info');
+          const fresh = await getFileAndSha(path);
+          const remoteRows = fresh.exists ? csvParse(fresh.content) : [];
+          const merged = mergeById(remoteRows, rows);
+          const mergedContent = csvStringify(merged, csvHeaders[key]);
+          const put2 = await putFileWithSha(path, mergedContent, fresh.sha || null, message + ' (retry)');
+          if (put2.sha) appState.shas[path] = put2.sha;
+        } else {
+          throw err;
+        }
+      }
+    }
+  };
+
+  const mergeById = (remoteRows, localRows) => {
+    const byId = new Map();
+    for (const r of remoteRows) byId.set(r.id, r);
+    for (const l of localRows) byId.set(l.id, l);
+    return Array.from(byId.values());
+  };
+
+  // -------------------- Templates and Seeding (no blockers) --------------------
   const templates = {
     goalTemplates: [
       "Complete literature review for 20 papers on transformer architectures",
@@ -158,15 +312,6 @@
       "Slides prepared for supervisor meeting; rehearsal pending.",
       "API bug fixed by refactoring auth middleware.",
       "Introduction chapter outline finalized, 1000 words written."
-    ],
-    blockerTemplates: [
-      "GPU cluster access delays.",
-      "Waiting for IRB approval.",
-      "Dataset licensing issues.",
-      "Need clarification from supervisor.",
-      "Time clash with coursework.",
-      "Library incompatibility with M1 Mac.",
-      "Participant recruitment slower than expected."
     ],
     studentNames: [
       "Alice Chen", "Bob Zhang", "Carol Liu", "David Wong", "Emma Lee",
@@ -206,14 +351,12 @@
     return 'not_achieved';
   };
 
-  const seedDemoData = () => {
+  const seedInitialDataWithoutBlockers = () => {
     const currentMonday = getCurrentMondayHKISO();
     const weeks = [0, -7, -14, -21, -28, -35].map(off => addDaysHK(currentMonday, off));
 
     const students = [];
     const weekly_entries = [];
-
-    const studentsPerRA = templates.researchAreas.length;
 
     for (let i = 0; i < 20; i++) {
       const full_name = templates.studentNames[i % templates.studentNames.length];
@@ -221,7 +364,7 @@
       const supervisor = templates.supervisors[i % templates.supervisors.length];
       const id = uuid();
 
-      const start_date = addDaysHK(currentMonday, - (70 + Math.floor(Math.random() * 120))); // ~3-6 months ago
+      const start_date = addDaysHK(currentMonday, - (70 + Math.floor(Math.random() * 120)));
       const created_at = nowISO();
 
       const student = {
@@ -240,20 +383,15 @@
       students.push(student);
 
       for (const w of weeks) {
-        // Goals 3-5
         const numGoals = 3 + Math.floor(Math.random() * 3);
         const goals = pickN(templates.goalTemplates, numGoals);
         const goalStatuses = goals.map(() => randomStatus());
         const overall = computeOverallStatusFromGoalStatuses(goalStatuses);
         const progress = pickN(templates.progressNoteTemplates, 1 + Math.floor(Math.random() * 2)).join(' ');
-        const hasBlocker = Math.random() < 0.6;
-        const blocker = hasBlocker ? pickN(templates.blockerTemplates, 1)[0] : "";
-        const anyNotAchieved = goalStatuses.some(s => s !== 'achieved');
-        const reason = anyNotAchieved ? "Reprioritized tasks due to blockers and supervisor feedback." : "";
         const nextNumGoals = 3 + Math.floor(Math.random() * 2);
         const nextGoals = pickN(templates.goalTemplates, nextNumGoals);
 
-        const entry = {
+        weekly_entries.push({
           id: uuid(),
           student_id: id,
           week_start_date: w,
@@ -261,39 +399,30 @@
           per_goal_status_json: JSON.stringify(goalStatuses),
           overall_status: overall,
           progress_notes: progress,
-          blockers: blocker,
-          reasons_if_not_achieved: reason,
           next_week_goals_json: JSON.stringify(nextGoals),
           created_by: "seed",
           created_at,
           updated_at: created_at
-        };
-        weekly_entries.push(entry);
+        });
       }
     }
 
-    // Teams and memberships
     const teams = templates.teams.map(t => ({ id: uuid(), team_name: t.name, description: t.description, created_at: nowISO(), updated_at: nowISO() }));
     const team_memberships = [];
-
-    // Even distribution across 3 teams
     for (let i = 0; i < students.length; i++) {
       const teamIdx = i % teams.length;
       team_memberships.push({ id: uuid(), team_id: teams[teamIdx].id, student_id: students[i].id, role_in_team: "member", created_at: nowISO() });
     }
 
-    // Team weekly entries for last 3 Mondays
-    const teamMondays = [0, -7, -14].map(off => addDaysHK(currentMonday, off));
     const team_weekly_entries = [];
+    const teamMondays = [0, -7, -14].map(off => addDaysHK(currentMonday, off));
     for (const team of teams) {
       for (const w of teamMondays) {
         const goals = pickN(templates.goalTemplates, 3 + Math.floor(Math.random() * 2));
         const statuses = goals.map(() => randomStatus());
         const overall = computeOverallStatusFromGoalStatuses(statuses);
         const notes = pickN(templates.progressNoteTemplates, 2).join(' ');
-        const blockers = Math.random() < 0.5 ? pickN(templates.blockerTemplates, 1)[0] : "";
         const nextGoals = pickN(templates.goalTemplates, 3);
-
         team_weekly_entries.push({
           id: uuid(),
           team_id: team.id,
@@ -301,7 +430,6 @@
           team_goals_set_json: JSON.stringify(goals),
           team_overall_status: overall,
           team_progress_notes: notes,
-          team_blockers: blockers,
           next_week_team_goals_json: JSON.stringify(nextGoals),
           created_by: "seed",
           created_at: nowISO(),
@@ -310,14 +438,11 @@
       }
     }
 
-    const data = { students, weekly_entries, teams, team_memberships, team_weekly_entries };
-    saveData(data);
-    return data;
+    return { students, weekly_entries, teams, team_memberships, team_weekly_entries };
   };
 
-  // Helpers to access data
+  // -------------------- Accessors & checks --------------------
   const getStudentById = (data, id) => data.students.find(s => s.id === id);
-  const getTeamById = (data, id) => data.teams.find(t => t.id === id);
   const getTeamsByStudentId = (data, studentId) => {
     const teamIds = data.team_memberships.filter(m => m.student_id === studentId).map(m => m.team_id);
     return data.teams.filter(t => teamIds.includes(t.id));
@@ -326,23 +451,8 @@
   const getEntryByStudentAndWeek = (data, studentId, weekStart) => data.weekly_entries.find(e => e.student_id === studentId && e.week_start_date === weekStart);
   const hasEntryThisWeek = (data, studentId, currentMonday) => !!getEntryByStudentAndWeek(data, studentId, currentMonday);
 
-  const ensureUniqueWeeklyEntry = (data, studentId, weekStart, ignoreEntryId = null) => {
-    const exists = data.weekly_entries.some(e => e.student_id === studentId && e.week_start_date === weekStart && e.id !== ignoreEntryId);
-    return !exists;
-  };
-  const ensureUniqueTeamWeeklyEntry = (data, teamId, weekStart, ignoreId = null) => {
-    const exists = data.team_weekly_entries.some(e => e.team_id === teamId && e.week_start_date === weekStart && e.id !== ignoreId);
-    return !exists;
-  };
-
-  // -------------------- App State --------------------
-  const appState = {
-    data: null,
-    page: 'dashboard',
-    selectedStudentId: null,
-    filters: { search: '', status: 'all', team: 'all', hasEntryThisWeek: 'all' },
-    formEditingEntryId: null
-  };
+  const ensureUniqueWeeklyEntry = (data, studentId, weekStart, ignoreEntryId = null) => !data.weekly_entries.some(e => e.student_id === studentId && e.week_start_date === weekStart && e.id !== ignoreEntryId);
+  const ensureUniqueTeamWeeklyEntry = (data, teamId, weekStart, ignoreId = null) => !data.team_weekly_entries.some(e => e.team_id === teamId && e.week_start_date === weekStart && e.id !== ignoreId);
 
   // -------------------- Rendering --------------------
   const setActiveNav = (page) => {
@@ -361,6 +471,7 @@
     if (appState.page === 'teams') return renderTeams(container);
     if (appState.page === 'reports') return renderReports(container);
     if (appState.page === 'settings') return renderSettings(container);
+    if (appState.page === 'student_detail') return renderStudentDetail(container, appState.selectedStudentId);
   };
 
   const renderDashboard = (root) => {
@@ -371,7 +482,6 @@
     const studentsWithEntryThisWeek = activeStudents.filter(s => hasEntryThisWeek(data, s.id, currentMonday)).length;
     const pctWithEntry = activeCount ? Math.round((studentsWithEntryThisWeek / activeCount) * 100) : 0;
 
-    // Completion rate: percent of entries this week whose overall_status is achieved
     const entriesThisWeek = data.weekly_entries.filter(e => e.week_start_date === currentMonday);
     const achievedCount = entriesThisWeek.filter(e => e.overall_status === 'achieved').length;
     const completionRate = entriesThisWeek.length ? Math.round((achievedCount / entriesThisWeek.length) * 100) : 0;
@@ -637,8 +747,6 @@
           <div class="entry-body">
             <div><strong>Goals (${ga}/${goals.length} achieved)</strong><div style="margin-top:6px; display:grid; gap:6px;">${goals.map((g,i) => `<div><span class="status-dot ${statuses[i]}"></span> ${g} (${statuses[i].replace('_',' ')})</div>`).join('')}</div></div>
             <div><strong>Progress notes</strong><div class="meta">${e.progress_notes || '-'}</div></div>
-            <div><strong>Blockers</strong><div class="meta">${e.blockers || '-'}</div></div>
-            ${e.reasons_if_not_achieved ? `<div><strong>Reasons if not achieved</strong><div class="meta">${e.reasons_if_not_achieved}</div></div>` : ''}
             <div><strong>Next week goals</strong><div class="meta">${nextGoals.map(g => `• ${g}`).join('<br/>')}</div></div>
           </div>
         `;
@@ -679,14 +787,6 @@
         <label>Progress notes</label>
         <textarea id="progressNotes" rows="3"></textarea>
       </div>
-      <div class="field">
-        <label>Blockers</label>
-        <textarea id="blockers" rows="2"></textarea>
-      </div>
-      <div class="field">
-        <label>Reasons if not achieved</label>
-        <textarea id="reasons" rows="2"></textarea>
-      </div>
 
       <div class="field">
         <label>Next week goals</label>
@@ -705,10 +805,14 @@
     const nextGoalsList = form.querySelector('#nextGoalsList');
     const weekDateInput = form.querySelector('#weekDate');
     const progressNotesInput = form.querySelector('#progressNotes');
-    const blockersInput = form.querySelector('#blockers');
-    const reasonsInput = form.querySelector('#reasons');
     const formModeLabel = form.querySelector('#formModeLabel');
     const cancelEditBtn = form.querySelector('#cancelEdit');
+    const saveBtn = form.querySelector('#saveEntry');
+
+    if (!writeEnabled()) {
+      saveBtn.disabled = true;
+      saveBtn.title = 'Provide GitHub token and repo info in Settings to enable saving.';
+    }
 
     const makeGoalRow = (goalText = '') => {
       const div = document.createElement('div');
@@ -740,14 +844,12 @@
     const addGoal = (text = '') => goalsList.appendChild(makeGoalRow(text));
     const addNextGoal = (text = '') => nextGoalsList.appendChild(makeNextGoalRow(text));
 
-    // Seed the form with one row each for usability
     if (!goalsList.children.length) addGoal('');
     if (!nextGoalsList.children.length) addNextGoal('');
 
     form.querySelector('#addGoal').addEventListener('click', () => addGoal(''));
     form.querySelector('#addNextGoal').addEventListener('click', () => addNextGoal(''));
 
-    // Duplicate last week
     form.querySelector('#duplicateGoals').addEventListener('click', () => {
       const dateISO = weekDateInput.value;
       const current = getEntriesByStudent(data, studentId);
@@ -758,22 +860,18 @@
         const nextGoals = JSON.parse(prev.next_week_goals_json);
         goalsList.innerHTML = '';
         nextGoals.forEach(g => addGoal(g));
-        // Clear statuses to partial by default (set by template)
         showToast('Copied last week\'s next week goals into goals. Statuses reset.', 'success');
       } else {
         showToast('No previous week found to duplicate from.', 'info');
       }
     });
 
-    // Validate Monday
     weekDateInput.addEventListener('change', () => {
       const iso = weekDateInput.value;
       if (!isMondayHK(iso)) {
         showToast('Selected date must be a Monday (HK time).', 'error');
-        // Reset to current Monday
         weekDateInput.value = getCurrentMondayHKISO();
       }
-      // If editing, reflect date change in label
       if (appState.formEditingEntryId) {
         const editing = data.weekly_entries.find(e => e.id === appState.formEditingEntryId);
         if (editing) formModeLabel.textContent = `Editing entry for ${formatISOForDisplay(weekDateInput.value)}`;
@@ -785,8 +883,6 @@
       cancelEditBtn.style.display = 'inline-flex';
       weekDateInput.value = entry.week_start_date;
       progressNotesInput.value = entry.progress_notes || '';
-      blockersInput.value = entry.blockers || '';
-      reasonsInput.value = entry.reasons_if_not_achieved || '';
       goalsList.innerHTML = '';
       nextGoalsList.innerHTML = '';
       const goals = JSON.parse(entry.goals_set_json);
@@ -807,15 +903,12 @@
       formModeLabel.textContent = 'Creating new entry';
       weekDateInput.value = defaultMonday;
       progressNotesInput.value = '';
-      blockersInput.value = '';
-      reasonsInput.value = '';
       goalsList.innerHTML = '';
       nextGoalsList.innerHTML = '';
       addGoal('');
       addNextGoal('');
     });
 
-    // Hook Edit buttons
     title.addEventListener('click', (e) => {
       const id = e.target && e.target.getAttribute('data-edit');
       if (!id) return;
@@ -823,8 +916,9 @@
       if (entry) loadEntryIntoForm(entry);
     });
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!writeEnabled()) { showToast('Write disabled. Configure GitHub token and repo in Settings.', 'error'); return; }
       const weekISO = weekDateInput.value;
       if (!isMondayHK(weekISO)) {
         showToast('Selected date must be a Monday (HK time).', 'error');
@@ -838,51 +932,52 @@
 
       const overall = computeOverallStatusFromGoalStatuses(statuses);
 
-      if (!appState.formEditingEntryId) {
-        // Creating new
-        if (!ensureUniqueWeeklyEntry(data, studentId, weekISO)) {
-          showToast('Duplicate entry for this student and week.', 'error');
-          return;
+      try {
+        if (!appState.formEditingEntryId) {
+          if (!ensureUniqueWeeklyEntry(data, studentId, weekISO)) {
+            showToast('Duplicate entry for this student and week.', 'error');
+            return;
+          }
+          const entry = {
+            id: uuid(),
+            student_id: studentId,
+            week_start_date: weekISO,
+            goals_set_json: JSON.stringify(goals),
+            per_goal_status_json: JSON.stringify(statuses),
+            overall_status: overall,
+            progress_notes: progressNotesInput.value.trim(),
+            next_week_goals_json: JSON.stringify(nextGoals),
+            created_by: 'demo_user',
+            created_at: nowISO(),
+            updated_at: nowISO()
+          };
+          data.weekly_entries.push(entry);
+          showToast('Saving…', 'info');
+          await saveAllDataToGitHub(data, 'feat(data): add weekly entry');
+          showToast('Weekly entry saved.', 'success');
+          renderStudentDetail(root, studentId);
+        } else {
+          const existing = data.weekly_entries.find(e => e.id === appState.formEditingEntryId);
+          if (!existing) { showToast('Editing target not found.', 'error'); return; }
+          if (!ensureUniqueWeeklyEntry(data, studentId, weekISO, existing.id)) {
+            showToast('Duplicate entry for this student and week.', 'error');
+            return;
+          }
+          existing.week_start_date = weekISO;
+          existing.goals_set_json = JSON.stringify(goals);
+          existing.per_goal_status_json = JSON.stringify(statuses);
+          existing.overall_status = overall;
+          existing.progress_notes = progressNotesInput.value.trim();
+          existing.next_week_goals_json = JSON.stringify(nextGoals);
+          existing.updated_at = nowISO();
+          showToast('Saving…', 'info');
+          await saveAllDataToGitHub(data, 'feat(data): update weekly entry');
+          showToast('Weekly entry saved.', 'success');
+          renderStudentDetail(root, studentId);
         }
-        const entry = {
-          id: uuid(),
-          student_id: studentId,
-          week_start_date: weekISO,
-          goals_set_json: JSON.stringify(goals),
-          per_goal_status_json: JSON.stringify(statuses),
-          overall_status: overall,
-          progress_notes: progressNotesInput.value.trim(),
-          blockers: blockersInput.value.trim(),
-          reasons_if_not_achieved: reasonsInput.value.trim(),
-          next_week_goals_json: JSON.stringify(nextGoals),
-          created_by: 'demo_user',
-          created_at: nowISO(),
-          updated_at: nowISO()
-        };
-        data.weekly_entries.push(entry);
-        saveData(data);
-        showToast('Weekly entry saved.', 'success');
-        renderStudentDetail(root, studentId);
-      } else {
-        // Editing existing entry
-        const existing = data.weekly_entries.find(e => e.id === appState.formEditingEntryId);
-        if (!existing) { showToast('Editing target not found.', 'error'); return; }
-        if (!ensureUniqueWeeklyEntry(data, studentId, weekISO, existing.id)) {
-          showToast('Duplicate entry for this student and week.', 'error');
-          return;
-        }
-        existing.week_start_date = weekISO;
-        existing.goals_set_json = JSON.stringify(goals);
-        existing.per_goal_status_json = JSON.stringify(statuses);
-        existing.overall_status = overall;
-        existing.progress_notes = progressNotesInput.value.trim();
-        existing.blockers = blockersInput.value.trim();
-        existing.reasons_if_not_achieved = reasonsInput.value.trim();
-        existing.next_week_goals_json = JSON.stringify(nextGoals);
-        existing.updated_at = nowISO();
-        saveData(data);
-        showToast('Weekly entry saved.', 'success');
-        renderStudentDetail(root, studentId);
+      } catch (err) {
+        console.error(err);
+        showToast('Save error. Check console and Settings.', 'error');
       }
     });
 
@@ -937,7 +1032,6 @@
                 <div class="entry-body">
                   <div><strong>Team goals</strong><div class="meta">${goals.map(g => `• ${g}`).join('<br/>')}</div></div>
                   <div><strong>Progress notes</strong><div class="meta">${e.team_progress_notes || '-'}</div></div>
-                  <div><strong>Blockers</strong><div class="meta">${e.team_blockers || '-'}</div></div>
                   <div><strong>Next week goals</strong><div class="meta">${ng.map(g => `• ${g}`).join('<br/>')}</div></div>
                 </div>
               </div>
@@ -986,24 +1080,20 @@
       </div>
     `;
 
-    const headers = {
-      students: ["id","full_name","email","cohort","start_date","status","notes","research_area","supervisor","created_at","updated_at"],
-      weekly_entries: ["id","student_id","week_start_date","goals_set_json","per_goal_status_json","overall_status","progress_notes","blockers","reasons_if_not_achieved","next_week_goals_json","created_by","created_at","updated_at"],
-      teams: ["id","team_name","description","created_at","updated_at"],
-      team_memberships: ["id","team_id","student_id","role_in_team","created_at"],
-      team_weekly_entries: ["id","team_id","week_start_date","team_goals_set_json","team_overall_status","team_progress_notes","team_blockers","next_week_team_goals_json","created_by","created_at","updated_at"]
-    };
-
     const toDownload = (filename, rows, order) => {
-      const csv = toCSV(rows, order);
-      downloadTextFile(filename, csv);
+      // Include BOM for downloads
+      const content = '\uFEFF' + csvStringify(rows, order);
+      const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     };
 
-    card.querySelector('#dlStudents').addEventListener('click', () => toDownload('students.csv', data.students, headers.students));
-    card.querySelector('#dlWeekly').addEventListener('click', () => toDownload('weekly_entries.csv', data.weekly_entries, headers.weekly_entries));
-    card.querySelector('#dlTeams').addEventListener('click', () => toDownload('teams.csv', data.teams, headers.teams));
-    card.querySelector('#dlMemberships').addEventListener('click', () => toDownload('team_memberships.csv', data.team_memberships, headers.team_memberships));
-    card.querySelector('#dlTeamWeekly').addEventListener('click', () => toDownload('team_weekly_entries.csv', data.team_weekly_entries, headers.team_weekly_entries));
+    card.querySelector('#dlStudents').addEventListener('click', () => toDownload('students.csv', data.students, csvHeaders.students));
+    card.querySelector('#dlWeekly').addEventListener('click', () => toDownload('weekly_entries.csv', data.weekly_entries, csvHeaders.weekly_entries));
+    card.querySelector('#dlTeams').addEventListener('click', () => toDownload('teams.csv', data.teams, csvHeaders.teams));
+    card.querySelector('#dlMemberships').addEventListener('click', () => toDownload('team_memberships.csv', data.team_memberships, csvHeaders.team_memberships));
+    card.querySelector('#dlTeamWeekly').addEventListener('click', () => toDownload('team_weekly_entries.csv', data.team_weekly_entries, csvHeaders.team_weekly_entries));
 
     root.appendChild(header);
     root.appendChild(card);
@@ -1017,18 +1107,58 @@
     const card = document.createElement('div');
     card.className = 'card';
     card.innerHTML = `
-      <div style="display:flex; align-items:center; gap:12px; flex-wrap: wrap;">
-        <button class="button danger" id="resetDemo">Reset Demo Data</button>
-        <div class="meta">Clears LocalStorage and reseeds demo data.</div>
+      <div class="grid-responsive">
+        <div class="field">
+          <label>Owner</label>
+          <input id="ghOwner" class="input" placeholder="e.g., hkust-tie" value="${appState.github.owner}" />
+        </div>
+        <div class="field">
+          <label>Repo</label>
+          <input id="ghRepo" class="input" placeholder="e.g., progress-tracker-demo" value="${appState.github.repo}" />
+        </div>
+        <div class="field">
+          <label>Branch</label>
+          <input id="ghBranch" class="input" placeholder="main" value="${appState.github.branch}" />
+        </div>
+        <div class="field">
+          <label>GitHub Token (not stored)</label>
+          <input id="ghToken" class="input" type="password" placeholder="ghp_...\" value="${appState.github.token}" />
+          <div class="help">Used only in memory for Contents API. Do not share.</div>
+        </div>
       </div>
+      <div style="margin-top:8px; display:flex; gap:8px; flex-wrap: wrap;">
+        <button class="button" id="saveCfg">Save Config</button>
+        <button class="button primary" id="initData">Initialize Data</button>
+      </div>
+      <div class="meta" style="margin-top:6px;">Write is ${writeEnabled() ? 'enabled' : 'disabled (read-only)'}.</div>
     `;
 
-    card.querySelector('#resetDemo').addEventListener('click', () => {
-      localStorage.removeItem(STORAGE_KEY);
-      appState.data = seedDemoData();
-      appState.page = 'dashboard';
-      render();
-      showToast('Demo data reset and reseeded.', 'success');
+    const initBtn = card.querySelector('#initData');
+    if (!writeEnabled()) { initBtn.disabled = true; initBtn.title = 'Provide token to initialize.'; }
+
+    card.querySelector('#saveCfg').addEventListener('click', async () => {
+      appState.github.owner = card.querySelector('#ghOwner').value.trim();
+      appState.github.repo = card.querySelector('#ghRepo').value.trim();
+      appState.github.branch = card.querySelector('#ghBranch').value.trim() || 'main';
+      appState.github.token = card.querySelector('#ghToken').value.trim();
+      showToast('Configuration updated.', 'success');
+      // Try to reload data
+      await reloadDataFlow();
+    });
+
+    card.querySelector('#initData').addEventListener('click', async () => {
+      if (!writeEnabled()) { showToast('Write disabled. Provide token/config.', 'error'); return; }
+      try {
+        showToast('Initializing data…', 'info');
+        const seed = seedInitialDataWithoutBlockers();
+        await saveAllDataToGitHub(seed, 'feat(data): initialize seed data');
+        appState.data = seed;
+        render();
+        showToast('Initialization complete.', 'success');
+      } catch (e) {
+        console.error(e);
+        showToast('Initialization failed. Check console.', 'error');
+      }
     });
 
     root.appendChild(header);
@@ -1036,13 +1166,40 @@
   };
 
   // -------------------- Init --------------------
-  const init = () => {
+  const reloadDataFlow = async () => {
+    try {
+      showToast('Loading data…', 'info');
+      const { data, missing } = await loadAllDataFromGitHub();
+      if (!missing && data) {
+        appState.data = data;
+        showToast('Data loaded from GitHub.', 'success');
+      } else {
+        if (writeEnabled()) {
+          const seed = seedInitialDataWithoutBlockers();
+          await saveAllDataToGitHub(seed, 'feat(data): initialize seed data');
+          appState.data = seed;
+          showToast('Seeded initial data to GitHub.', 'success');
+        } else {
+          appState.data = seedInitialDataWithoutBlockers();
+          showToast('CSV missing. Running with in-memory demo data (read-only).', 'info');
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      appState.data = seedInitialDataWithoutBlockers();
+      showToast('Failed to load from GitHub. Using in-memory demo (read-only).', 'error');
+    }
+    if (!appState.page) appState.page = 'dashboard';
+    render();
+  };
+
+  const init = async () => {
     // Nav events
     document.querySelector('.nav').addEventListener('click', (e) => {
       const btn = e.target.closest('.nav-link');
       if (!btn) return;
       const page = btn.dataset.page;
-      if (page === 'dashboard' || page === 'students' || page === 'teams' || page === 'reports' || page === 'settings') {
+      if (['dashboard','students','teams','reports','settings'].includes(page)) {
         appState.page = page;
         appState.selectedStudentId = null;
         render();
@@ -1050,21 +1207,9 @@
       }
     });
 
-    // Load or seed
-    const existing = loadData();
-    if (!existing) {
-      appState.data = seedDemoData();
-    } else {
-      appState.data = existing;
-    }
-
-    render();
+    await reloadDataFlow();
   };
 
-  // Auto-init after DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
 })();
