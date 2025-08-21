@@ -1,19 +1,18 @@
 /*
 HKUST MPhil TIE Weekly Progress Tracker (Demo, SPA)
 
-Backendless SPA using GitHub CSV persistence via GitHub Contents API.
+Backendless SPA using Supabase persistence (tables).
 Configuration:
-- Provide GitHub repo info and a Personal Access Token (classic fine) at runtime.
-- You can set window.GITHUB_TOKEN and window.GITHUB_CONFIG = { owner, repo, branch }
-  before the app loads, or configure in Settings (stored only in memory).
-- Without a token, the app is read-only. It can load public CSVs but cannot write.
+- Provide Supabase URL and anon/public key in Settings (stored only in memory).
+- You can predefine window.SUPABASE_URL and window.SUPABASE_KEY before the app loads.
+- Without credentials, the app runs read-only with in-memory demo data.
 
-CSV layout (split files):
-- data/students.csv
-- data/weekly_entries.csv
-- data/teams.csv
-- data/team_memberships.csv
-- data/team_weekly_entries.csv
+Tables (schemas align with former CSVs):
+- students
+- weekly_entries
+- teams
+- team_memberships
+- team_weekly_entries
 
 Schemas (blockers removed):
 - students: id, full_name, email, cohort, start_date, status, notes, research_area, supervisor, created_at, updated_at
@@ -99,7 +98,7 @@ Schemas (blockers removed):
     }, timeout);
   };
 
-  // CSV helpers (parse/stringify)
+  // CSV helpers (parse/stringify) for reports only
   const csvEscape = (value) => {
     if (value === null || value === undefined) return '';
     const str = String(value);
@@ -158,7 +157,8 @@ Schemas (blockers removed):
   const encodeBase64 = (s) => btoa(unescape(encodeURIComponent(s)));
   const decodeBase64 = (b) => decodeURIComponent(escape(atob(b)));
 
-  // -------------------- GitHub API Backend --------------------
+  // -------------------- Supabase Backend --------------------
+  // retained only for CSV export column order
   const githubPaths = {
     students: 'data/students.csv',
     weekly_entries: 'data/weekly_entries.csv',
@@ -173,74 +173,41 @@ Schemas (blockers removed):
     selectedStudentId: null,
     filters: { search: '', status: 'all', team: 'all', hasEntryThisWeek: 'all' },
     formEditingEntryId: null,
-    github: {
-      owner: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.owner) || '',
-      repo: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.repo) || '',
-      branch: (window.GITHUB_CONFIG && window.GITHUB_CONFIG.branch) || 'main',
-      token: window.GITHUB_TOKEN || ''
-    },
-    shas: {} // path -> sha
-  };
-
-  const writeEnabled = () => !!(appState.github.owner && appState.github.repo && appState.github.branch && appState.github.token);
-
-  const ghHeaders = () => {
-    const h = {
-      'Accept': 'application/vnd.github+json'
-    };
-    if (appState.github.token) h['Authorization'] = `Bearer ${appState.github.token}`;
-    return h;
-  };
-
-  const getFileAndSha = async (path) => {
-    const { owner, repo, branch } = appState.github;
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${encodeURIComponent(branch)}`;
-    const res = await fetch(url, { headers: ghHeaders() });
-    if (res.status === 404) return { exists: false };
-    if (!res.ok) throw new Error(`GitHub GET failed ${res.status}`);
-    const json = await res.json();
-    return { exists: true, sha: json.sha, content: decodeBase64(json.content) };
-  };
-
-  const putFileWithSha = async (path, content, sha, message) => {
-    const { owner, repo, branch } = appState.github;
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
-    const body = {
-      message,
-      content: encodeBase64(content),
-      branch,
-      sha: sha || undefined
-    };
-    const res = await fetch(url, { method: 'PUT', headers: { ...ghHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    if (!res.ok) {
-      const t = await res.text();
-      const err = new Error(`GitHub PUT failed ${res.status}: ${t}`);
-      err.status = res.status;
-      throw err;
+    supabase: {
+      url: window.SUPABASE_URL || '',
+      key: window.SUPABASE_KEY || '',
+      client: null
     }
-    const json = await res.json();
-    return { sha: json.content && json.content.sha };
   };
 
-  const loadAllDataFromGitHub = async () => {
-    const paths = Object.values(githubPaths);
-    const result = { students: [], weekly_entries: [], teams: [], team_memberships: [], team_weekly_entries: [] };
-    let missingAny = false;
+  const writeEnabled = () => !!(appState.supabase.url && appState.supabase.key);
 
-    for (const [key, path] of Object.entries(githubPaths)) {
-      try {
-        const { exists, content, sha } = await getFileAndSha(path);
-        if (!exists) { missingAny = true; continue; }
-        appState.shas[path] = sha;
-        const rows = csvParse(content);
-        result[key] = rows;
-      } catch (e) {
-        if (String(e.message || '').includes('404')) missingAny = true; else throw e;
-      }
+  const ensureSupabaseClient = () => {
+    if (!appState.supabase.client && writeEnabled()) {
+      appState.supabase.client = window.supabase.createClient(appState.supabase.url, appState.supabase.key);
     }
+    return appState.supabase.client;
+  };
 
-    if (missingAny) return { data: null, missing: true };
-
+  const loadAllDataFromSupabase = async () => {
+    const client = ensureSupabaseClient();
+    if (!client) return { data: null, missing: true };
+    const [studentsRes, weeklyRes, teamsRes, membershipsRes, teamWeeklyRes] = await Promise.all([
+      client.from('students').select('*'),
+      client.from('weekly_entries').select('*'),
+      client.from('teams').select('*'),
+      client.from('team_memberships').select('*'),
+      client.from('team_weekly_entries').select('*')
+    ]);
+    const anyError = [studentsRes, weeklyRes, teamsRes, membershipsRes, teamWeeklyRes].find(r => r.error);
+    if (anyError) return { data: null, missing: true };
+    const result = {
+      students: studentsRes.data || [],
+      weekly_entries: weeklyRes.data || [],
+      teams: teamsRes.data || [],
+      team_memberships: membershipsRes.data || [],
+      team_weekly_entries: teamWeeklyRes.data || []
+    };
     return { data: result, missing: false };
   };
 
@@ -252,39 +219,18 @@ Schemas (blockers removed):
     team_weekly_entries: ["id","team_id","week_start_date","team_goals_set_json","team_overall_status","team_progress_notes","next_week_team_goals_json","created_by","created_at","updated_at"]
   };
 
-  const saveAllDataToGitHub = async (data, message = 'chore(data): sync') => {
-    if (!writeEnabled()) throw new Error('Write not enabled. Provide token and repo config.');
-
-    const toTry = Object.entries(githubPaths);
-    for (const [key, path] of toTry) {
-      const rows = data[key];
-      const content = csvStringify(rows, csvHeaders[key]);
-      let sha = appState.shas[path] || null;
-      try {
-        const put = await putFileWithSha(path, content, sha, message);
-        if (put.sha) appState.shas[path] = put.sha;
-      } catch (err) {
-        // Basic conflict retry: refetch sha and merge once
-        if (err.status === 409 || err.status === 422) {
-          showToast('Conflict detected. Retrying…', 'info');
-          const fresh = await getFileAndSha(path);
-          const remoteRows = fresh.exists ? csvParse(fresh.content) : [];
-          const merged = mergeById(remoteRows, rows);
-          const mergedContent = csvStringify(merged, csvHeaders[key]);
-          const put2 = await putFileWithSha(path, mergedContent, fresh.sha || null, message + ' (retry)');
-          if (put2.sha) appState.shas[path] = put2.sha;
-        } else {
-          throw err;
-        }
-      }
-    }
+  const upsertTable = async (tableName, rows) => {
+    const client = ensureSupabaseClient();
+    const { error } = await client.from(tableName).upsert(rows, { onConflict: 'id' });
+    if (error) throw error;
   };
 
-  const mergeById = (remoteRows, localRows) => {
-    const byId = new Map();
-    for (const r of remoteRows) byId.set(r.id, r);
-    for (const l of localRows) byId.set(l.id, l);
-    return Array.from(byId.values());
+  const seedAllDataToSupabase = async (data) => {
+    await upsertTable('students', data.students);
+    await upsertTable('teams', data.teams);
+    await upsertTable('team_memberships', data.team_memberships);
+    await upsertTable('weekly_entries', data.weekly_entries);
+    await upsertTable('team_weekly_entries', data.team_weekly_entries);
   };
 
   // -------------------- Templates and Seeding (no blockers) --------------------
@@ -811,7 +757,7 @@ Schemas (blockers removed):
 
     if (!writeEnabled()) {
       saveBtn.disabled = true;
-      saveBtn.title = 'Provide GitHub token and repo info in Settings to enable saving.';
+      saveBtn.title = 'Provide Supabase URL and key in Settings to enable saving.';
     }
 
     const makeGoalRow = (goalText = '') => {
@@ -918,7 +864,7 @@ Schemas (blockers removed):
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!writeEnabled()) { showToast('Write disabled. Configure GitHub token and repo in Settings.', 'error'); return; }
+      if (!writeEnabled()) { showToast('Write disabled. Configure Supabase URL/key in Settings.', 'error'); return; }
       const weekISO = weekDateInput.value;
       if (!isMondayHK(weekISO)) {
         showToast('Selected date must be a Monday (HK time).', 'error');
@@ -953,8 +899,14 @@ Schemas (blockers removed):
           };
           data.weekly_entries.push(entry);
           showToast('Saving…', 'info');
-          await saveAllDataToGitHub(data, 'feat(data): add weekly entry');
-          showToast('Weekly entry saved.', 'success');
+          try {
+            const client = ensureSupabaseClient();
+            await client.from('weekly_entries').insert(entry);
+            showToast('Weekly entry saved.', 'success');
+          } catch (err) {
+            console.error(err);
+            showToast('Save error. Check console and Settings.', 'error');
+          }
           renderStudentDetail(root, studentId);
         } else {
           const existing = data.weekly_entries.find(e => e.id === appState.formEditingEntryId);
@@ -971,8 +923,25 @@ Schemas (blockers removed):
           existing.next_week_goals_json = JSON.stringify(nextGoals);
           existing.updated_at = nowISO();
           showToast('Saving…', 'info');
-          await saveAllDataToGitHub(data, 'feat(data): update weekly entry');
-          showToast('Weekly entry saved.', 'success');
+          try {
+            const client = ensureSupabaseClient();
+            await client.from('weekly_entries').update({
+              student_id: existing.student_id,
+              week_start_date: existing.week_start_date,
+              goals_set_json: existing.goals_set_json,
+              per_goal_status_json: existing.per_goal_status_json,
+              overall_status: existing.overall_status,
+              progress_notes: existing.progress_notes,
+              next_week_goals_json: existing.next_week_goals_json,
+              created_by: existing.created_by,
+              created_at: existing.created_at,
+              updated_at: existing.updated_at
+            }).eq('id', existing.id);
+            showToast('Weekly entry saved.', 'success');
+          } catch (err) {
+            console.error(err);
+            showToast('Save error. Check console and Settings.', 'error');
+          }
           renderStudentDetail(root, studentId);
         }
       } catch (err) {
@@ -1109,22 +1078,14 @@ Schemas (blockers removed):
     card.innerHTML = `
       <div class="grid-responsive">
         <div class="field">
-          <label>Owner</label>
-          <input id="ghOwner" class="input" placeholder="e.g., hkust-tie" value="${appState.github.owner}" />
+          <label>Supabase URL</label>
+          <input id="sbUrl" class="input" placeholder="https://xyzcompany.supabase.co" value="${appState.supabase.url}" />
         </div>
         <div class="field">
-          <label>Repo</label>
-          <input id="ghRepo" class="input" placeholder="e.g., progress-tracker-demo" value="${appState.github.repo}" />
+          <label>Supabase anon/public key</label>
+          <input id="sbKey" class="input" type="password" placeholder="ey..." value="${appState.supabase.key}" />
         </div>
-        <div class="field">
-          <label>Branch</label>
-          <input id="ghBranch" class="input" placeholder="main" value="${appState.github.branch}" />
-        </div>
-        <div class="field">
-          <label>GitHub Token (not stored)</label>
-          <input id="ghToken" class="input" type="password" placeholder="ghp_...\" value="${appState.github.token}" />
-          <div class="help">Used only in memory for Contents API. Do not share.</div>
-        </div>
+        <div class="help">Stored only in memory during this session.</div>
       </div>
       <div style="margin-top:8px; display:flex; gap:8px; flex-wrap: wrap;">
         <button class="button" id="saveCfg">Save Config</button>
@@ -1134,24 +1095,24 @@ Schemas (blockers removed):
     `;
 
     const initBtn = card.querySelector('#initData');
-    if (!writeEnabled()) { initBtn.disabled = true; initBtn.title = 'Provide token to initialize.'; }
+    if (!writeEnabled()) { initBtn.disabled = true; initBtn.title = 'Provide Supabase URL and key to initialize.'; }
 
     card.querySelector('#saveCfg').addEventListener('click', async () => {
-      appState.github.owner = card.querySelector('#ghOwner').value.trim();
-      appState.github.repo = card.querySelector('#ghRepo').value.trim();
-      appState.github.branch = card.querySelector('#ghBranch').value.trim() || 'main';
-      appState.github.token = card.querySelector('#ghToken').value.trim();
-      showToast('Configuration updated.', 'success');
+      appState.supabase.url = card.querySelector('#sbUrl').value.trim();
+      appState.supabase.key = card.querySelector('#sbKey').value.trim();
+      appState.supabase.client = null;
+      ensureSupabaseClient();
+      showToast('Supabase configuration updated.', 'success');
       // Try to reload data
       await reloadDataFlow();
     });
 
     card.querySelector('#initData').addEventListener('click', async () => {
-      if (!writeEnabled()) { showToast('Write disabled. Provide token/config.', 'error'); return; }
+      if (!writeEnabled()) { showToast('Write disabled. Provide Supabase URL/key.', 'error'); return; }
       try {
         showToast('Initializing data…', 'info');
         const seed = seedInitialDataWithoutBlockers();
-        await saveAllDataToGitHub(seed, 'feat(data): initialize seed data');
+        await seedAllDataToSupabase(seed);
         appState.data = seed;
         render();
         showToast('Initialization complete.', 'success');
@@ -1169,25 +1130,25 @@ Schemas (blockers removed):
   const reloadDataFlow = async () => {
     try {
       showToast('Loading data…', 'info');
-      const { data, missing } = await loadAllDataFromGitHub();
+      const { data, missing } = await loadAllDataFromSupabase();
       if (!missing && data) {
         appState.data = data;
-        showToast('Data loaded from GitHub.', 'success');
+        showToast('Data loaded from Supabase.', 'success');
       } else {
         if (writeEnabled()) {
           const seed = seedInitialDataWithoutBlockers();
-          await saveAllDataToGitHub(seed, 'feat(data): initialize seed data');
+          await seedAllDataToSupabase(seed);
           appState.data = seed;
-          showToast('Seeded initial data to GitHub.', 'success');
+          showToast('Seeded initial data to Supabase.', 'success');
         } else {
           appState.data = seedInitialDataWithoutBlockers();
-          showToast('CSV missing. Running with in-memory demo data (read-only).', 'info');
+          showToast('Supabase not configured. Running with in-memory demo data (read-only).', 'info');
         }
       }
     } catch (e) {
       console.error(e);
       appState.data = seedInitialDataWithoutBlockers();
-      showToast('Failed to load from GitHub. Using in-memory demo (read-only).', 'error');
+      showToast('Failed to load from Supabase. Using in-memory demo (read-only).', 'error');
     }
     if (!appState.page) appState.page = 'dashboard';
     render();
