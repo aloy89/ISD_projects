@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HKUST MPhil TIE - Weekly Progress Tracker (Demo)</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script>
+    // Hardcoded data/token for testing purposes
+    window.GITHUB_CONFIG = { owner: "ISD", repo: "ISD_projects", branch: "main" };
+    window.GITHUB_TOKEN = "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";
+  </script>
+</head>
+<body>
+  <div id="app">
+    <aside class="sidebar" aria-label="Sidebar Navigation">
+      <div class="brand">
+        <div class="logo" aria-hidden="true">TIE</div>
+        <div class="brand-text">HKUST MPhil TIE</div>
+      </div>
+      <nav class="nav">
+        <button class="nav-link active" data-page="dashboard" aria-current="page">Dashboard</button>
+        <button class="nav-link" data-page="students">Students</button>
+        <button class="nav-link" data-page="teams">Teams</button>
+        <button class="nav-link" data-page="reports">Reports</button>
+        <button class="nav-link" data-page="settings">Settings</button>
+      </nav>
+      <footer class="sidebar-footer">
+        <small>Demo • LocalStorage</small>
+      </footer>
+    </aside>
+    <main id="mainContent" tabindex="-1" aria-live="polite"></main>
+  </div>
+  <div id="toastContainer" aria-live="assertive" aria-atomic="true"></div>
+  <script src="./app.js"></script>
+</body>
+</html>
